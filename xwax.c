@@ -48,6 +48,7 @@
 
 #define DEFAULT_RATE 44100
 #define DEFAULT_PRIORITY 80
+#define DEFAULT_TIMECODE_GAIN 0
 
 #define DEFAULT_IMPORTER EXECDIR "/xwax-import"
 #define DEFAULT_SCANNER EXECDIR "/xwax-scan"
@@ -81,10 +82,11 @@ static void usage(FILE *fd)
       "  -t <name>      Timecode name\n"
       "  -33            Use timecode at 33.3RPM (default)\n"
       "  -45            Use timecode at 45RPM\n"
+      "  -tg <gain>     Amplify timecode signal. Use gain 0-6, default: %d)"
       "  -c             Protect against certain operations while playing\n"
       "  -u             Allow all operations when playing\n"
       "  -i <program>   Importer (default '%s')\n\n",
-      DEFAULT_IMPORTER);
+      DEFAULT_TIMECODE_GAIN, DEFAULT_IMPORTER);
 
 #ifdef WITH_OSS
     fprintf(fd, "OSS device options:\n"
@@ -125,7 +127,7 @@ static void usage(FILE *fd)
 
 int main(int argc, char *argv[])
 {
-    int r, n, priority;
+    int r, n, priority, timecode_gain;
     const char *importer, *scanner, *geo;
     char *endptr;
     size_t nctl;
@@ -163,6 +165,7 @@ int main(int argc, char *argv[])
     geo = "";
     nctl = 0;
     priority = DEFAULT_PRIORITY;
+    timecode_gain = DEFAULT_TIMECODE_GAIN;
     importer = DEFAULT_IMPORTER;
     scanner = DEFAULT_SCANNER;
     timecode = NULL;
@@ -280,6 +283,28 @@ int main(int argc, char *argv[])
             argv += 2;
             argc -= 2;
 #endif
+        } else if (!strcmp(argv[0], "-tg")) {
+
+            /* Set gain for timecode for subsequence devices */
+
+            if (argc < 2) {
+                fprintf(stderr, "-tg requires an integer argument between 0 and 6.\n");
+                return -1;
+            }
+
+            timecode_gain = strtol(argv[1], &endptr, 10);
+            if (*endptr != '\0') {
+                fprintf(stderr, "-tg requires an integer argument between 0 and 6.\n");
+                return -1;
+            }
+            
+            if (timecode_gain < 0 || timecode_gain > 6) {
+                fprintf(stderr, "-tg requires an integer argument between 0 and 6.\n");
+                return -1;
+            }
+
+            argv += 2;
+            argc -= 2;
 
         } else if (!strcmp(argv[0], "-d") || !strcmp(argv[0], "-a") ||
 		  !strcmp(argv[0], "-j"))
@@ -302,7 +327,7 @@ int main(int argc, char *argv[])
                 return -1;
             }
 
-            fprintf(stderr, "Initialising deck %d (%s)...\n", ndeck, argv[1]);
+            fprintf(stderr, "Initialising deck %d (%s)...\n", (int) ndeck, argv[1]);
 
             ld = &deck[ndeck];
             device = &ld->device;
@@ -348,7 +373,12 @@ int main(int argc, char *argv[])
                 assert(timecode != NULL);
             }
 
-            timecoder_init(timecoder, timecode, speed, sample_rate);
+            timecoder_init(timecoder, timecode, speed, sample_rate, timecode_gain);
+            
+            fprintf(stderr, "Initialising timecoder %d with gain %d, "
+                "zero_threshold %d, ref_peak_avg %d...\n", 
+                (int) ndeck, timecode_gain, 
+                timecoder->zero_threshold, timecoder->ref_peaks_avg);
 
             /* Connect up the elements to make an operational deck */
 

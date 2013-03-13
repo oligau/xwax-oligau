@@ -26,11 +26,7 @@
 #include "debug.h"
 #include "timecoder.h"
 
-#define ZERO_THRESHOLD 128
-
 #define ZERO_RC 0.001 /* time constant for zero/rumble filter */
-
-#define REF_PEAKS_AVG 48 /* in wave cycles */
 
 /* The number of correct bits which come in before the timecode is
  * declared valid. Set this too low, and risk the record skipping
@@ -289,7 +285,8 @@ static void init_channel(struct timecoder_channel *ch)
  */
 
 void timecoder_init(struct timecoder *tc, struct timecode_def *def,
-                    double speed, unsigned int sample_rate)
+                    double speed, unsigned int sample_rate, 
+                    int timecode_gain)
 {
     assert(def != NULL);
 
@@ -315,6 +312,37 @@ void timecoder_init(struct timecoder *tc, struct timecode_def *def,
     tc->timecode_ticker = 0;
 
     tc->mon = NULL;
+       
+    switch (timecode_gain) {
+        case 0:
+            tc->zero_threshold = 128;
+            tc->ref_peaks_avg = 48;
+            break;
+        case 1:
+            tc->zero_threshold = 112;
+            tc->ref_peaks_avg = 48;
+            break;
+        case 2:
+            tc->zero_threshold = 96;
+            tc->ref_peaks_avg = 40;
+            break;
+        case 3:
+            tc->zero_threshold = 80;
+            tc->ref_peaks_avg = 32;
+            break;
+        case 4:
+            tc->zero_threshold = 64;
+            tc->ref_peaks_avg = 24;
+            break;
+        case 5:
+            tc->zero_threshold = 48;
+            tc->ref_peaks_avg = 16;
+            break;
+        case 6:
+            tc->zero_threshold = 32;
+            tc->ref_peaks_avg = 8;
+            break;          
+    }
 }
 
 /*
@@ -365,16 +393,17 @@ void timecoder_monitor_clear(struct timecoder *tc)
  */
 
 static void detect_zero_crossing(struct timecoder_channel *ch,
-                                 signed int v, double alpha)
+                                 signed int v, double alpha, 
+                                 int zero_threshold)
 {
     ch->crossing_ticker++;
 
     ch->swapped = false;
-    if (v > ch->zero + ZERO_THRESHOLD && !ch->positive) {
+    if (v > ch->zero + zero_threshold && !ch->positive) {
         ch->swapped = true;
         ch->positive = true;
         ch->crossing_ticker = 0;
-    } else if (v < ch->zero - ZERO_THRESHOLD && ch->positive) {
+    } else if (v < ch->zero - zero_threshold && ch->positive) {
         ch->swapped = true;
         ch->positive = false;
         ch->crossing_ticker = 0;
@@ -458,7 +487,7 @@ static void process_bitstream(struct timecoder *tc, signed int m)
 
     /* Adjust the reference level based on this new peak */
 
-    tc->ref_level = (tc->ref_level * (REF_PEAKS_AVG - 1) + m) / REF_PEAKS_AVG;
+    tc->ref_level = (tc->ref_level * (tc->ref_peaks_avg - 1) + m) / tc->ref_peaks_avg;
 
     debug("%+6d zero, %+6d (ref %+6d)\t= %d%c (%5d)",
           tc->primary.zero,
@@ -476,8 +505,10 @@ static void process_sample(struct timecoder *tc,
 {
     signed int m; /* pcm sample, sum of two shorts */
 
-    detect_zero_crossing(&tc->primary, primary, tc->zero_alpha);
-    detect_zero_crossing(&tc->secondary, secondary, tc->zero_alpha);
+    detect_zero_crossing(&tc->primary, primary, tc->zero_alpha, 
+                            tc->zero_threshold);
+    detect_zero_crossing(&tc->secondary, secondary, tc->zero_alpha, 
+                            tc->zero_threshold);
 
     m = abs(primary - tc->primary.zero);
 

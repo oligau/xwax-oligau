@@ -34,6 +34,7 @@
 int main(int argc, char *argv[])
 {
     unsigned int s;
+    int timecode_gain = 0;
     signed short sample[STEREO];
     struct timecoder tc;
     struct timecode_def *def;
@@ -41,7 +42,7 @@ int main(int argc, char *argv[])
     def = timecoder_find_definition("serato_2a");
     assert(def != NULL);
 
-    timecoder_init(&tc, def, 1.0, RATE);
+    timecoder_init(&tc, def, 1.0, RATE, timecode_gain);
 
     s = 0;
 
